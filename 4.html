@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Sistem Irigasi - Minimalist White</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.js" type="text/javascript"></script> 
+    <style>
+        :root {
+            --font-main: 'Inter', sans-serif;
+            --sidebar-width: 240px;
+            --sidebar-mini: 70px;
+        }
+        body {
+            font-family: var(--font-main);
+            background-color: #f3f4f6; /* Abu-abu background */
+            color: #374151; /* Text abu gelap */
+        }
+
+        /* --- Sidebar Logic --- */
+        .sidebar {
+            width: var(--sidebar-width);
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        
+        /* Kondisi saat Sidebar Tertutup (Mini Mode) */
+        .sidebar.collapsed {
+            width: var(--sidebar-mini);
+        }
+        
+        /* Menyembunyikan Teks saat Collapsed */
+        .sidebar.collapsed .logo-text, 
+        .sidebar.collapsed .nav-label,
+        .sidebar.collapsed .footer-text {
+            opacity: 0;
+            pointer-events: none;
+            display: none;
+        }
+        
+        /* Memusatkan Ikon saat Collapsed */
+        .sidebar.collapsed .nav-btn {
+            justify-content: center;
+            padding-left: 0;
+            padding-right: 0;
+        }
+        .sidebar.collapsed .logo-container {
+            justify-content: center;
+            padding-left: 0;
+            padding-right: 0;
+        }
+
+        /* --- UI Components --- */
+        .clean-card {
+            background: white;
+            border-radius: 12px;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.02);
+        }
+
+        .nav-btn {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            margin-bottom: 4px;
+            border-radius: 8px;
+            font-weight: 500;
+            color: #6b7280;
+            transition: all 0.2s;
+        }
+        .nav-btn:hover { background-color: #f9fafb; color: #111827; }
+        .nav-btn.active { background-color: #f3f4f6; color: #111827; font-weight: 600; }
+
+        /* Tombol Slider & Aksi */
+        .btn-action {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s;
+            border: 1px solid #e5e7eb;
+            background: white;
+            color: #374151;
+        }
+        .btn-action:hover { border-color: #d1d5db; background: #f9fafb; }
+        .btn-action.active-black { background: #1f2937; color: white; border-color: #1f2937; }
+        
+        /* Slider Range */
+        input[type=range] { -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%;
+            background: #1f2937; margin-top: -6px; cursor: pointer;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 4px; background: #e5e7eb; border-radius: 2px;
+        }
+        
+        /* Scrollbar Halus */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+    </style>
+</head>
+<body class="h-screen flex overflow-hidden">
+
+    <aside id="sidebar" class="sidebar bg-white border-r border-gray-200 flex flex-col z-20">
+        <div class="h-16 flex items-center px-6 border-b border-gray-100 logo-container transition-all">
+            <div class="w-8 h-8 bg-gray-800 rounded-lg flex items-center justify-center text-white font-bold flex-shrink-0">
+                S
+            </div>
+            <span class="logo-text ml-3 font-bold text-lg tracking-tight text-gray-800">SIP <span class="font-normal text-gray-400">V3</span></span>
+        </div>
+
+        <nav class="flex-1 px-3 py-6 space-y-1">
+            <button class="nav-btn w-full active" data-target="dashboard" title="Dashboard">
+                <svg class="w-5 h-5 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+                <span class="nav-label ml-3">Dashboard</span>
+            </button>
+            <button class="nav-btn w-full" data-target="grafik" title="Grafik & Analitik">
+                <svg class="w-5 h-5 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4 2 2M3 12h18M5 15h14M5 9h14"/></svg>
+                <span class="nav-label ml-3">Grafik Data</span>
+            </button>
+            <button class="nav-btn w-full" data-target="ringkasan" title="Riwayat Data">
+                <svg class="w-5 h-5 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                <span class="nav-label ml-3">Riwayat Log</span>
+            </button>
+        </nav>
+        
+        <div class="p-4 border-t border-gray-100 text-xs text-gray-400 text-center footer-text">
+            &copy; 2025 Smart System
+        </div>
+    </aside>
+
+    <div class="flex-1 flex flex-col h-full relative min-w-0">
+        
+        <header class="h-16 bg-white/90 backdrop-blur border-b border-gray-200 flex justify-between items-center px-4 sticky top-0 z-10">
+            <div class="flex items-center gap-4">
+                <button id="burgerBtn" class="p-2 rounded-lg hover:bg-gray-100 text-gray-600 transition-colors focus:outline-none">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                    </svg>
+                </button>
+                <h1 class="text-base md:text-lg font-bold text-gray-800 truncate">Sistem Irigasi Pintar</h1>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <div class="hidden sm:block text-right">
+                    <p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Waktu Server</p>
+                    <p id="currentTime" class="text-sm font-mono font-medium text-gray-700">--:--:--</p>
+                </div>
+                <div class="flex items-center bg-gray-50 px-3 py-1.5 rounded-full border border-gray-100">
+                    <div id="connIndicator" class="w-2 h-2 rounded-full bg-gray-300 mr-2"></div>
+                    <span id="connText" class="text-xs font-semibold text-gray-500">Offline</span>
+                </div>
+            </div>
+        </header>
+
+        <div id="contentArea" class="flex-1 overflow-hidden relative p-4 md:p-6">
+            
+            <main id="dashboard" class="tab-content h-full flex flex-col gap-6 overflow-y-auto pb-20">
+                
+                <div class="clean-card px-5 py-4 flex items-center justify-between flex-wrap gap-4">
+                    <div class="flex items-center gap-3">
+                        <div class="flex h-8 w-8 items-center justify-center rounded-full bg-green-50 text-green-600">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        </div>
+                        <div>
+                            <p class="text-xs font-medium text-gray-400 uppercase">Status Operasional</p>
+                            <p id="systemStatus" class="text-sm font-semibold text-gray-700">Menunggu koneksi...</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-4 md:gap-8 text-sm">
+                        <div><span class="block text-[10px] text-gray-400 uppercase font-bold">Pompa</span><span id="pumpSummary" class="font-bold text-gray-800">-</span></div>
+                        <div><span class="block text-[10px] text-gray-400 uppercase font-bold">Atap</span><span id="roofAngleSummary" class="font-bold text-gray-800">-</span></div>
+                        <div><span class="block text-[10px] text-gray-400 uppercase font-bold">Cahaya</span><span id="lightSummary" class="font-bold text-gray-800">-</span></div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="clean-card p-4 hover:shadow-md transition-all">
+                        <div class="flex justify-between items-start mb-1">
+                            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wide">pH Tanah 1</p>
+                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">pH</span>
+                        </div>
+                        <p id="ph1Value" class="text-2xl font-bold text-gray-800">-</p>
+                        <p id="ph1Status" class="text-[10px] mt-1 text-gray-400 font-medium">Menunggu data...</p>
+                    </div>
+                    <div class="clean-card p-4 hover:shadow-md transition-all">
+                        <div class="flex justify-between items-start mb-1">
+                            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Tanah 1</p>
+                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">%</span>
+                        </div>
+                        <p id="soil1Value" class="text-2xl font-bold text-gray-800">-</p>
+                        <p id="soil1Status" class="text-[10px] mt-1 text-gray-400 font-medium">Menunggu data...</p>
+                    </div>
+                    <div class="clean-card p-4 hover:shadow-md transition-all">
+                        <div class="flex justify-between items-start mb-1">
+                            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Suhu Udara</p>
+                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">°C</span>
+                        </div>
+                        <p id="tempValue" class="text-2xl font-bold text-gray-800">-</p>
+                        <p id="tempStatus" class="text-[10px] mt-1 text-gray-400 font-medium">Menunggu data...</p>
+                    </div>
+                    <div class="clean-card p-4 hover:shadow-md transition-all">
+                        <div class="flex justify-between items-start mb-1">
+                            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Cahaya</p>
+                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">Lx</span>
+                        </div>
+                        <p id="lightValue" class="text-2xl font-bold text-gray-800">-</p>
+                        <p id="lightStatus" class="text-[10px] mt-1 text-gray-400 font-medium">Menunggu data...</p>
+                    </div>
+                    <div class="clean-card p-4 hover:shadow-md transition-all">
+                        <div class="flex justify-between items-start mb-1">
+                            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wide">pH Tanah 2</p>
+                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">pH</span>
+                        </div>
+                        <p id="ph2Value" class="text-2xl font-bold text-gray-800">-</p>
+                        <p id="ph2Status" class="text-[10px] mt-1 text-gray-400 font-medium">Menunggu data...</p>
+                    </div>
+                    <div class="clean-card p-4 hover:shadow-md transition-all">
+                        <div class="flex justify-between items-start mb-1">
+                            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Tanah 2</p>
+                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">%</span>
+                        </div>
+                        <p id="soil2Value" class="text-2xl font-bold text-gray-800">-</p>
+                        <p id="soil2Status" class="text-[10px] mt-1 text-gray-400 font-medium">Menunggu data...</p>
+                    </div>
+                    <div class="clean-card p-4 hover:shadow-md transition-all">
+                        <div class="flex justify-between items-start mb-1">
+                            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Kelembapan</p>
+                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">%</span>
+                        </div>
+                        <p id="humValue" class="text-2xl font-bold text-gray-800">-</p>
+                        <p id="humStatus" class="text-[10px] mt-1 text-gray-400 font-medium">Menunggu data...</p>
+                    </div>
+                    <div class="clean-card p-4 flex items-center justify-center border-dashed bg-gray-50">
+                        <span class="text-[10px] font-bold text-gray-300 uppercase">Cadangan</span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    
+                    <div class="clean-card p-5 flex flex-col">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-sm font-bold text-gray-800 uppercase">Pompa Zona 1</h3>
+                            <div class="flex bg-gray-100 p-1 rounded-lg">
+                                <button id="pump1ModeAuto" class="px-3 py-1 text-[10px] font-bold uppercase rounded transition-all active-black">Auto</button>
+                                <button id="pump1ModeManual" class="px-3 py-1 text-[10px] font-bold uppercase rounded transition-all text-gray-500">Manual</button>
+                            </div>
+                        </div>
+                        <div class="mt-auto flex items-center justify-between bg-gray-50 p-3 rounded-lg border border-gray-100">
+                            <div class="flex items-center gap-2">
+                                <div id="pump1Indicator" class="w-3 h-3 rounded-full bg-gray-300 transition-colors"></div>
+                                <span class="text-xs font-medium text-gray-500">Power</span>
+                            </div>
+                            <div class="flex gap-2">
+                                <button id="pump1BtnOn" class="btn-action text-xs">ON</button>
+                                <button id="pump1BtnOff" class="btn-action text-xs">OFF</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="clean-card p-5 flex flex-col">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-sm font-bold text-gray-800 uppercase">Pompa Zona 2 (Relay 2)</h3>
+                            <div class="flex bg-gray-100 p-1 rounded-lg">
+                                <button id="pump2ModeAuto" class="px-3 py-1 text-[10px] font-bold uppercase rounded transition-all active-black">Auto</button>
+                                <button id="pump2ModeManual" class="px-3 py-1 text-[10px] font-bold uppercase rounded transition-all text-gray-500">Manual</button>
+                            </div>
+                        </div>
+                        <div class="mt-auto flex items-center justify-between bg-gray-50 p-3 rounded-lg border border-gray-100">
+                            <div class="flex items-center gap-2">
+                                <div id="pump2Indicator" class="w-3 h-3 rounded-full bg-gray-300 transition-colors"></div>
+                                <span class="text-xs font-medium text-gray-500">Power</span>
+                            </div>
+                            <div class="flex gap-2">
+                                <button id="pump2BtnOn" class="btn-action text-xs">ON</button>
+                                <button id="pump2BtnOff" class="btn-action text-xs">OFF</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="clean-card p-5 flex flex-col">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-sm font-bold text-gray-800 uppercase">Atap Otomatis (Servo)</h3>
+                            <div class="flex bg-gray-100 p-1 rounded-lg">
+                                <button id="roofModeAuto" class="px-3 py-1 text-[10px] font-bold uppercase rounded transition-all active-black">Auto</button>
+                                <button id="roofModeManual" class="px-3 py-1 text-[10px] font-bold uppercase rounded transition-all text-gray-500">Manual</button>
+                            </div>
+                        </div>
+                        <div class="mt-auto space-y-3">
+                            <div>
+                                <div class="flex justify-between text-xs text-gray-500 font-semibold mb-1">
+                                    <span>Posisi</span>
+                                    <span id="roofAngleValue" class="text-gray-800">90°</span>
+                                </div>
+                                <input id="roofSlider" type="range" min="0" max="180" value="90" class="w-full">
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <button id="btnCloseRoof" class="btn-action text-xs">Tutup (60°)</button>
+                                <button id="btnOpenRoof" class="btn-action text-xs">Buka (150°)</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+
+            <main id="grafik" class="tab-content hidden h-full overflow-y-auto pb-20">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-lg font-bold text-gray-800">Analisis Grafik</h2>
+                    <div class="flex bg-white border border-gray-200 p-1 rounded-lg shadow-sm">
+                        <button id="subSensorEnv" class="px-4 py-1 text-xs font-bold uppercase rounded transition-all bg-gray-800 text-white">Lingkungan</button>
+                        <button id="subSensorSoil" class="px-4 py-1 text-xs font-bold uppercase rounded transition-all text-gray-500 hover:bg-gray-50">Tanah</button>
+                    </div>
+                </div>
+
+                <div id="envCharts" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="clean-card p-4 h-64 lg:col-span-2"><h3 class="text-xs font-bold text-gray-400 uppercase mb-2">Intensitas Cahaya (Lux)</h3><div class="h-full pb-5"><canvas id="chartLight"></canvas></div></div>
+                    <div class="clean-card p-4 h-64"><h3 class="text-xs font-bold text-gray-400 uppercase mb-2">Suhu Udara (°C)</h3><div class="h-full pb-5"><canvas id="chartSuhu"></canvas></div></div>
+                    <div class="clean-card p-4 h-64"><h3 class="text-xs font-bold text-gray-400 uppercase mb-2">Kelembapan Udara (%)</h3><div class="h-full pb-5"><canvas id="chartKelembapan"></canvas></div></div>
+                </div>
+                <div id="soilCharts" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="clean-card p-4 h-64"><h3 class="text-xs font-bold text-gray-400 uppercase mb-2">pH Tanah 1</h3><div class="h-full pb-5"><canvas id="chartPH1"></canvas></div></div>
+                    <div class="clean-card p-4 h-64"><h3 class="text-xs font-bold text-gray-400 uppercase mb-2">pH Tanah 2</h3><div class="h-full pb-5"><canvas id="chartPH2"></canvas></div></div>
+                    <div class="clean-card p-4 h-64"><h3 class="text-xs font-bold text-gray-400 uppercase mb-2">Moisture Tanah 1 (%)</h3><div class="h-full pb-5"><canvas id="chartSoil1"></canvas></div></div>
+                    <div class="clean-card p-4 h-64"><h3 class="text-xs font-bold text-gray-400 uppercase mb-2">Moisture Tanah 2 (%)</h3><div class="h-full pb-5"><canvas id="chartSoil2"></canvas></div></div>
+                </div>
+            </main>
+
+            <main id="ringkasan" class="tab-content hidden h-full overflow-y-auto pb-20">
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-lg font-bold text-gray-800">Tabel Data</h2>
+                    <a href="https://docs.google.com/spreadsheets/d/1B4I2sBcp90mDwFNjqpXEe8hiF6uDGS9eLd2BHHzhS0o/edit?usp=sharing" target="_blank" class="btn-action bg-gray-800 text-white border-transparent hover:bg-gray-700 text-xs uppercase tracking-wide">
+                        Buka Spreadsheet
+                    </a>
+                </div>
+                <div class="clean-card overflow-hidden">
+                    <table class="w-full text-sm text-left text-gray-600">
+                        <thead class="bg-gray-50 text-gray-400 uppercase text-[10px] font-bold tracking-wider border-b border-gray-100">
+                            <tr>
+                                <th class="px-4 py-3">Waktu</th>
+                                <th class="px-4 py-3">pH1</th>
+                                <th class="px-4 py-3">pH2</th>
+                                <th class="px-4 py-3">Suhu</th>
+                                <th class="px-4 py-3">RH</th>
+                                <th class="px-4 py-3">Tnh1</th>
+                                <th class="px-4 py-3">Tnh2</th>
+                                <th class="px-4 py-3">Lux</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logTableBody" class="divide-y divide-gray-50"></tbody>
+                    </table>
+                </div>
+                <div class="grid grid-cols-3 gap-4 mt-6">
+                    <div class="clean-card p-4 text-center"><p class="text-[10px] text-gray-400 font-bold uppercase">Avg Suhu</p><p id="avgTemp" class="text-xl font-bold text-gray-800 mt-1">-</p></div>
+                    <div class="clean-card p-4 text-center"><p class="text-[10px] text-gray-400 font-bold uppercase">Avg RH</p><p id="avgHum" class="text-xl font-bold text-gray-800 mt-1">-</p></div>
+                    <div class="clean-card p-4 text-center"><p class="text-[10px] text-gray-400 font-bold uppercase">Avg Cahaya</p><p id="avgLight" class="text-xl font-bold text-gray-800 mt-1">-</p></div>
+                </div>
+            </main>
+
+        </div>
+    </div>
+
+    <script>
+        // --- KONFIGURASI MQTT ---
+        const MQTT_HOST = 'broker.hivemq.com';
+        const MQTT_PORT = 8000; // Port WebSockets non-SSL untuk HiveMQ
+        const DEVICE_ID = "PKM3"; // Harus sama dengan yang di ESP32!
+        const CLIENT_ID = 'web_client_' + parseInt(Math.random() * 100000);
+
+        // Topik Publish (Perintah dari Web ke ESP32)
+        const TOPIC_POMPA_CMD    = DEVICE_ID + "/control/pompa";
+        const TOPIC_SERVO_CMD    = DEVICE_ID + "/control/servo";
+        const TOPIC_RELAY2_CMD   = DEVICE_ID + "/control/relay2"; // Pompa 2
+
+        // Topik Subscribe (Data dari ESP32 ke Web)
+        const TOPIC_DATA_ALL     = DEVICE_ID + "/data/#"; 
+
+        let client = null;
+        let dataHistory = { temp:[], hum:[], light:[] };
+        let modes = { p1: 'Auto', p2: 'Auto', roof: 'Auto' };
+
+        // --- UTILITY FUNCTIONS ---
+        function setText(id, txt) { const el = document.getElementById(id); if(el) el.textContent = txt; }
+        function setConnStatus(status, text, color) {
+            document.getElementById('connIndicator').className = `w-2 h-2 rounded-full bg-${color}-500 mr-2`;
+            document.getElementById('connText').innerText = text;
+            document.getElementById('connText').className = `text-xs font-semibold text-${color}-600`;
+            setText('systemStatus', status);
+        }
+
+        // --- MQTT LOGIC (Connect, Disconnect, Message) ---
+
+        function onConnect() {
+            setConnStatus("Sistem Operasional", "Online", "green");
+            console.log(`[MQTT] Terhubung sebagai: ${CLIENT_ID}`);
+
+            // Subscribe ke semua topik data dari ESP32
+            client.subscribe(TOPIC_DATA_ALL); 
+        }
+
+        function onConnectionLost(responseObject) {
+            setConnStatus("Koneksi Terputus", "Terputus", "red");
+            console.error(`[MQTT] Koneksi terputus: ${responseObject.errorMessage}`);
+            // Coba sambungkan ulang setelah beberapa detik
+            setTimeout(mqttConnect, 5000);
+        }
+
+        function onMessageArrived(message) {
+            const topic = message.destinationName;
+            const payload = message.payloadString;
+            const time = new Date().toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
+            
+            // Logic parsing payload dari ESP32. ESP32 mengirim data per sensor/topik.
+            // Kita harus memetakan topik ke elemen UI yang benar.
+
+            let v = {
+                ph1: null, ph2: null, temp: null, hum: null, soil1: null, soil2: null, 
+                light: null, roof: null, pump1: null, pump2: null
+            };
+
+            // Mapping topik dan nilai
+            const mapTopic = (topic, value) => {
+                const parts = topic.split('/'); // Misal: PKM3/data/suhu
+                const sensor = parts[2];
+                if (sensor === 'suhu') v.temp = parseFloat(value);
+                else if (sensor === 'humidity') v.hum = parseFloat(value);
+                else if (sensor === 'soil1') v.soil1 = parseFloat(value);
+                else if (sensor === 'soil2') v.soil2 = parseFloat(value);
+                else if (sensor === 'lux') v.light = parseFloat(value);
+                else if (sensor === 'ph-larutan') v.ph1 = parseFloat(value);
+                else if (sensor === 'ph-tanah') v.ph2 = parseFloat(value);
+                else if (sensor === 'servo') v.roof = parseInt(value);
+                else if (sensor === 'pompa') v.pump1 = value === '1' ? 'ON' : 'OFF'; // Status pompa 1 (Relay 1)
+                else if (sensor === 'relay2') v.pump2 = value === '1' ? 'ON' : 'OFF'; // Status pompa 2 (Relay 2)
+            };
+
+            mapTopic(topic, payload);
+            
+            // Hanya update UI jika ada data yang terdeteksi
+            if (Object.values(v).some(val => val !== null)) {
+                updateUI(v, time);
+            }
+        }
+        
+        function mqttConnect() {
+            setConnStatus("Menghubungkan...", "Offline", "gray");
+            console.log(`[MQTT] Mencoba koneksi ke ${MQTT_HOST}:${MQTT_PORT}`);
+            try {
+                client = new Paho.MQTT.Client(MQTT_HOST, MQTT_PORT, CLIENT_ID);
+                client.onConnectionLost = onConnectionLost;
+                client.onMessageArrived = onMessageArrived;
+                
+                // HiveMQ menggunakan port 8000 untuk WebSockets non-SSL
+                client.connect({
+                    onSuccess: onConnect, 
+                    useSSL: false
+                });
+            } catch (e) {
+                console.error("[MQTT] Gagal membuat klien Paho:", e);
+                onConnectionLost({errorMessage: "Kesalahan klien Paho"});
+            }
+        }
+        
+        // FUNGSI UNTUK MENGIRIM PERINTAH KE ESP32 (PUBLISH)
+        function sendCommand(topic, value) {
+            if (!client || !client.isConnected()) {
+                console.error("Klien MQTT tidak terhubung. Perintah gagal dikirim.");
+                return;
+            }
+            const message = new Paho.MQTT.Message(String(value));
+            message.destinationName = topic;
+            message.retained = false; // Setel ke true jika ingin nilai terakhir disimpan broker
+            client.send(message);
+            console.log(`[MQTT] Perintah terkirim ke ${topic}: ${value}`);
+        }
+
+        // --- UI UPDATE LOGIC ---
+        function updateUI(v, time) {
+            
+            const setVal = (id, val, unit, statusId, normalRange) => {
+                if (val === null || val === undefined) return;
+                document.getElementById(id).innerText = val + unit;
+                const statusEl = document.getElementById(statusId);
+                
+                // Logic Status Warning/Normal
+                if (statusEl && normalRange) {
+                    if (val >= normalRange[0] && val <= normalRange[1]) {
+                        statusEl.innerText = "Normal"; statusEl.className = "text-[10px] mt-1 text-green-600 font-medium";
+                    } else {
+                        statusEl.innerText = "Warning"; statusEl.className = "text-[10px] mt-1 text-orange-500 font-medium";
+                    }
+                } else if (statusEl) {
+                     statusEl.innerText = "OK"; statusEl.className = "text-[10px] mt-1 text-gray-400 font-medium";
+                }
+            };
+            
+            // --- Update Sensor Values ---
+            setVal('ph1Value', v.ph1 !== null ? v.ph1.toFixed(1) : '-', '', 'ph1Status', [6, 7.5]);
+            setVal('ph2Value', v.ph2 !== null ? v.ph2.toFixed(1) : '-', '', 'ph2Status', [6, 7.5]);
+            setVal('soil1Value', v.soil1 !== null ? Math.round(v.soil1) : '-', '%', 'soil1Status', [40, 70]);
+            setVal('soil2Value', v.soil2 !== null ? Math.round(v.soil2) : '-', '%', 'soil2Status', [40, 70]);
+            setVal('tempValue', v.temp !== null ? v.temp.toFixed(1) : '-', '°', 'tempStatus', [20, 30]);
+            setVal('humValue', v.hum !== null ? Math.round(v.hum) : '-', '%', 'humStatus', [50, 80]);
+            setVal('lightValue', v.light !== null ? Math.round(v.light) : '-', '', 'lightStatus', [300, 800]);
+
+            // --- Update Summaries ---
+            if(v.light !== null) setText('lightSummary', Math.round(v.light) + ' Lx');
+            if(v.roof !== null) { setText('roofAngleValue', v.roof + '°'); setText('roofAngleSummary', v.roof + '°'); }
+            
+            // --- Update Aktuator UI ---
+            const setPumpUI = (id, state) => {
+                if (state === null || state === undefined) return;
+                const ind = document.getElementById(id + 'Indicator');
+                ind.className = state === 'ON' ? "w-3 h-3 rounded-full bg-green-500 shadow-sm" : "w-3 h-3 rounded-full bg-gray-300";
+                const btnOn = document.getElementById(id+'BtnOn'); const btnOff = document.getElementById(id+'BtnOff');
+                if(state === 'ON') { btnOn.classList.add('active-black'); btnOff.classList.remove('active-black'); } 
+                else { btnOff.classList.add('active-black'); btnOn.classList.remove('active-black'); }
+                return state;
+            };
+
+            let summaryPump1 = v.pump1 || (document.getElementById('pumpSummary').textContent.split('/')[0] || '-');
+            let summaryPump2 = v.pump2 || (document.getElementById('pumpSummary').textContent.split('/')[1] || '-');
+            
+            summaryPump1 = setPumpUI('pump1', summaryPump1); 
+            summaryPump2 = setPumpUI('pump2', summaryPump2);
+            setText('pumpSummary', `${summaryPump1}/${summaryPump2}`);
+
+            // --- Update Charts and History ---
+            if(v.temp !== null) updateChartData(charts.temp, time, v.temp);
+            if(v.hum !== null) updateChartData(charts.hum, time, v.hum);
+            if(v.light !== null) updateChartData(charts.light, time, v.light);
+            if(v.ph1 !== null) updateChartData(charts.ph1, time, v.ph1);
+            if(v.ph2 !== null) updateChartData(charts.ph2, time, v.ph2);
+            if(v.soil1 !== null) updateChartData(charts.soil1, time, v.soil1);
+            if(v.soil2 !== null) updateChartData(charts.soil2, time, v.soil2);
+            
+            if(v.temp !== null) dataHistory.temp.push(v.temp);
+            if(v.hum !== null) dataHistory.hum.push(v.hum);
+            if(v.light !== null) dataHistory.light.push(v.light);
+
+            const avg = arr => arr.length ? (arr.slice(-50).reduce((a,b)=>a+b,0)/Math.min(arr.length, 50)).toFixed(1) : '-';
+            setText('avgTemp', avg(dataHistory.temp) + '°C'); setText('avgHum', avg(dataHistory.hum) + '%');
+            setText('avgLight', Math.round(avg(dataHistory.light)) + ' Lx');
+
+            const tbody = document.getElementById('logTableBody');
+            // Hanya tambahkan ke tabel jika ada update data lingkungan utama
+            if(v.temp !== null && v.hum !== null && v.light !== null) {
+                const row = `<tr class="hover:bg-gray-50 transition"><td class="px-4 py-3 font-mono text-xs">${time}</td><td class="px-4 py-3">${v.ph1.toFixed(1)}</td><td class="px-4 py-3">${v.ph2.toFixed(1)}</td><td class="px-4 py-3">${v.temp.toFixed(1)}</td><td class="px-4 py-3">${Math.round(v.hum)}</td><td class="px-4 py-3">${Math.round(v.soil1)}</td><td class="px-4 py-3">${Math.round(v.soil2)}</td><td class="px-4 py-3">${Math.round(v.light)}</td></tr>`;
+                tbody.insertAdjacentHTML('afterbegin', row); if(tbody.children.length > 8) tbody.lastElementChild.remove();
+            }
+        }
+
+        // --- TOGGLE SIDEBAR (BURGER ICON) ---
+        const sidebar = document.getElementById('sidebar');
+        const burgerBtn = document.getElementById('burgerBtn');
+        
+        burgerBtn.addEventListener('click', () => {
+            sidebar.classList.toggle('collapsed');
+        });
+
+        // --- NAVIGATION ---
+        const navBtns = document.querySelectorAll('.nav-btn');
+        const contents = document.querySelectorAll('.tab-content');
+        
+        function switchTab(targetId) {
+            navBtns.forEach(b => b.classList.remove('active'));
+            const activeBtn = document.querySelector(`.nav-btn[data-target="${targetId}"]`);
+            if(activeBtn) activeBtn.classList.add('active');
+            
+            contents.forEach(c => c.classList.add('hidden'));
+            document.getElementById(targetId).classList.remove('hidden');
+        }
+        navBtns.forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.target)));
+
+        // --- SUBTABS GRAFIK ---
+        const btnEnv = document.getElementById('subSensorEnv');
+        const btnSoil = document.getElementById('subSensorSoil');
+        const divEnv = document.getElementById('envCharts');
+        const divSoil = document.getElementById('soilCharts');
+        
+        btnEnv.addEventListener('click', () => {
+            btnEnv.className = "px-4 py-1 text-xs font-bold uppercase rounded transition-all bg-gray-800 text-white";
+            btnSoil.className = "px-4 py-1 text-xs font-bold uppercase rounded transition-all text-gray-500 hover:bg-gray-50";
+            divEnv.classList.remove('hidden'); divSoil.classList.add('hidden');
+        });
+        btnSoil.addEventListener('click', () => {
+            btnSoil.className = "px-4 py-1 text-xs font-bold uppercase rounded transition-all bg-gray-800 text-white";
+            btnEnv.className = "px-4 py-1 text-xs font-bold uppercase rounded transition-all text-gray-500 hover:bg-gray-50";
+            divSoil.classList.remove('hidden'); divEnv.classList.add('hidden');
+        });
+
+        // --- CLOCK ---
+        setInterval(() => { document.getElementById('currentTime').textContent = new Date().toLocaleTimeString('en-GB'); }, 1000);
+
+        // --- CHART CONFIG ---
+        Chart.defaults.font.family = "'Inter', sans-serif";
+        Chart.defaults.color = '#9ca3af';
+        Chart.defaults.scale.grid.color = '#f9fafb';
+
+        function createChart(ctx, label) {
+            const gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 300);
+            gradient.addColorStop(0, 'rgba(55, 65, 81, 0.05)');
+            gradient.addColorStop(1, 'rgba(55, 65, 81, 0)');
+
+            return new Chart(ctx, {
+                type: 'line',
+                data: { labels: [], datasets: [{ label, data: [], borderColor: '#4b5563', backgroundColor: gradient, borderWidth: 1.5, pointRadius: 0, fill: true, tension: 0.4 }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1f2937', padding: 8, cornerRadius: 6, displayColors: false } },
+                    scales: { x: { grid: { display: false }, ticks: { display: false } }, y: { border: { dash: [4, 4] }, grid: { color: '#f3f4f6' } } }
+                }
+            });
+        }
+
+        const charts = {
+            temp: createChart(document.getElementById('chartSuhu'), 'Suhu'),
+            hum: createChart(document.getElementById('chartKelembapan'), 'Kelembapan'),
+            light: createChart(document.getElementById('chartLight'), 'Cahaya'),
+            ph1: createChart(document.getElementById('chartPH1'), 'pH 1'),
+            ph2: createChart(document.getElementById('chartPH2'), 'pH 2'),
+            soil1: createChart(document.getElementById('chartSoil1'), 'Tanah 1'),
+            soil2: createChart(document.getElementById('chartSoil2'), 'Tanah 2'),
+        };
+
+        function updateChartData(chart, label, value) {
+            if(value === null || value === undefined) return;
+            chart.data.labels.push(label);
+            chart.data.datasets[0].data.push(value);
+            if(chart.data.labels.length > 20) { chart.data.labels.shift(); chart.data.datasets[0].data.shift(); }
+            chart.update();
+        }
+
+        // --- AKTUATOR & MODE KONTROL ---
+
+        // Manual Mode Toggles
+        document.getElementById('pump1ModeAuto').onclick = () => { modes.p1 = 'Auto'; updateModeUI(); };
+        document.getElementById('pump1ModeManual').onclick = () => { modes.p1 = 'Manual'; updateModeUI(); };
+        document.getElementById('pump2ModeAuto').onclick = () => { modes.p2 = 'Auto'; updateModeUI(); };
+        document.getElementById('pump2ModeManual').onclick = () => { modes.p2 = 'Manual'; updateModeUI(); };
+        document.getElementById('roofModeAuto').onclick = () => { modes.roof = 'Auto'; updateModeUI(); };
+        document.getElementById('roofModeManual').onclick = () => { modes.roof = 'Manual'; updateModeUI(); };
+
+        function updateModeUI() {
+            const setBtn = (id, isActive) => document.getElementById(id).className = isActive ? "px-3 py-1 text-[10px] font-bold uppercase rounded transition-all active-black" : "px-3 py-1 text-xs font-bold uppercase rounded transition-all text-gray-500";
+            setBtn('pump1ModeAuto', modes.p1 === 'Auto'); setBtn('pump1ModeManual', modes.p1 === 'Manual');
+            setBtn('pump2ModeAuto', modes.p2 === 'Auto'); setBtn('pump2ModeManual', modes.p2 === 'Manual');
+            setBtn('roofModeAuto', modes.roof === 'Auto'); setBtn('roofModeManual', modes.roof === 'Manual');
+
+            const disable = (ids, isAuto) => ids.forEach(id => { const el = document.getElementById(id); el.disabled = isAuto; el.style.opacity = isAuto?'0.5':'1'; el.style.cursor = isAuto?'not-allowed':'pointer'; });
+            disable(['pump1BtnOn', 'pump1BtnOff'], modes.p1 === 'Auto');
+            disable(['pump2BtnOn', 'pump2BtnOff'], modes.p2 === 'Auto');
+            disable(['btnOpenRoof', 'btnCloseRoof', 'roofSlider'], modes.roof === 'Auto');
+        }
+
+
+        // Pump 1 (Relay 1) & Pump 2 (Relay 2) Commands
+        ['pump1', 'pump2'].forEach(p => {
+            const topic = p === 'pump1' ? TOPIC_POMPA_CMD : TOPIC_RELAY2_CMD;
+            document.getElementById(p+'BtnOn').onclick = function() { 
+                if(!this.disabled) sendCommand(topic, '1'); // Kirim '1' untuk ON
+            };
+            document.getElementById(p+'BtnOff').onclick = function() { 
+                if(!this.disabled) sendCommand(topic, '0'); // Kirim '0' untuk OFF
+            };
+        });
+
+        // Servo (Roof) Commands
+        const rSlider = document.getElementById('roofSlider');
+        rSlider.oninput = () => setText('roofAngleValue', rSlider.value + '°');
+        rSlider.onchange = () => { 
+            if(modes.roof === 'Manual') sendCommand(TOPIC_SERVO_CMD, parseInt(rSlider.value));
+        };
+        document.getElementById('btnOpenRoof').onclick = () => { 
+            if(modes.roof === 'Manual') { 
+                rSlider.value = 150; setText('roofAngleValue','150°'); 
+                sendCommand(TOPIC_SERVO_CMD, 150); 
+            } 
+        };
+        document.getElementById('btnCloseRoof').onclick = () => { 
+            if(modes.roof === 'Manual') { 
+                rSlider.value = 60; setText('roofAngleValue','60°'); 
+                sendCommand(TOPIC_SERVO_CMD, 60); 
+            } 
+        };
+
+        // --- INITIALIZATION ---
+        window.onload = function() {
+            mqttConnect(); 
+            updateModeUI();
+        };
+
+    </script>
+</body>
+</html>
