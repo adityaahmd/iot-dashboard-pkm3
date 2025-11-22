@@ -369,7 +369,7 @@
     <script>
         // --- KONFIGURASI MQTT ---
         const MQTT_HOST = 'broker.hivemq.com';
-        const MQTT_PORT = 8000; // Port WebSockets non-SSL untuk HiveMQ
+        const MQTT_PORT = 1883; // Port WebSockets non-SSL untuk HiveMQ
         const DEVICE_ID = "PKM3"; // Harus sama dengan yang di ESP32!
         const CLIENT_ID = 'web_client_' + parseInt(Math.random() * 100000);
 
@@ -698,4 +698,5 @@
 
     </script>
 </body>
+
 </html>
